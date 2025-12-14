@@ -31,6 +31,7 @@ import os.path
 import enum
 import platform
 import sys
+import subprocess
 
 import cv2
 import numpy as np
@@ -373,79 +374,71 @@ def draw_rect(frame, bbox, color=BLUE, thickness=5):
                   thickness)
 
 
-def get_frames(title='Camera', size=VIDEO_SIZE, handle_key=None,
+def get_frames(title='Camera', size=(640, 480), handle_key=None,
                capture_device_index=0, mirror=True, display=True,
                return_key=False):
-    """
-    Gets a stream of image frames from the camera.
 
-    Args:
-      title (str): A title for the display window.
-      size (tuple): The image resolution for all frames, as an int tuple (x,y).
-      handle_key: A callback function that accepts arguments (key, frame) for
-        a key event and the image frame from the moment the key was pressed.
-        This has no effect if display is False.
-      capture_device_index (int): The Linux device ID for the camera.
-      mirror (bool): Whether to flip the images horizontally (set True for a
-        selfie view).
-      display (bool): Whether to show the camera images in a desktop window
-        (set False if you don't use a desktop).
-      return_key (bool): Whether to also return any key presses. If True, the
-        function returns a tuple with (frame, key) instead of just the frame.
-
-    Returns:
-      An iterator that yields each image frame from the default camera. Or a
-      tuple if ``return_key`` is True.
-    """
     width, height = size
 
     if display and not handle_key:
         print("Press Q to quit")
-
         def handle_key(key, frame):
-            if key == ord('q') or key == ord('Q'):
-                return False
-            return True
+            return key not in (ord('q'), ord('Q'))
 
-    attempts = 5
-    while True:
-        cap = cv2.VideoCapture(capture_device_index)
-        success, _ = cap.read()
-        if success:
-            print("Camera started successfully.")
-            break
+    # rpicam-vid outputs MJPEG to stdout
+    cmd = [
+        "rpicam-vid",
+        "--nopreview",
+        "--width", str(width),
+        "--height", str(height),
+        "--framerate", "30",
+        "--codec", "mjpeg",
+        "-t", "0",
+        "-o", "-"
+    ]
 
-        if attempts == 0:
-            print(
-                "Cannot initialize camera!\nMake sure the camera is connected.",
-                file=sys.stderr)
-            sys.exit(1)
-
-        cap.release()
-        attempts -= 1
-
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
 
     try:
+        buf = b""
         while True:
-            key = cv2.waitKey(1)
-            success, frame = cap.read()
-            if mirror:
-                frame = cv2.flip(frame, 1)
-            if success:
+            chunk = proc.stdout.read(4096)
+            if not chunk:
+                err = proc.stderr.read().decode("utf-8", errors="ignore")
+                raise RuntimeError(f"rpicam-vid stopped unexpectedly.\n{err}")
+            buf += chunk
+
+            # Look for JPEG start/end markers
+            start = buf.find(b"\xff\xd8")
+            end = buf.find(b"\xff\xd9")
+            if start != -1 and end != -1 and end > start:
+                jpg = buf[start:end+2]
+                buf = buf[end+2:]
+
+                frame = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if frame is None:
+                    continue
+                if mirror:
+                    frame = cv2.flip(frame, 1)
+
+                key = cv2.waitKey(1) if display else -1
+                if display:
+                    cv2.imshow(title, frame)
+
                 if return_key:
                     yield (frame, key)
                 else:
                     yield frame
-                if display:
-                    cv2.imshow(title, frame)
 
-            if key != -1 and not handle_key(key, frame):
-                break
+                if key != -1 and not handle_key(key, frame):
+                    break
     finally:
-        cap.release()
-        cv2.destroyAllWindows()
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        if display:
+            cv2.destroyAllWindows()
 
 
 def save_frame(filename, frame):
