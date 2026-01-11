@@ -1,3 +1,7 @@
+# Important Note
+This is a fork of the AIY Maker Kit by Google, which appears to be no longer supported. The
+code in this repo has been modified.
+
 # AIY Maker Kit Python API and examples
 
 The aiymakerkit API greatly simplifies the amount of code needed to
