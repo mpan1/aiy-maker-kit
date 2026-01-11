@@ -1,6 +1,8 @@
 # Important Note
 This is a fork of the AIY Maker Kit by Google, which appears to be no longer supported. The
-code in this repo has been modified.
+code in this repo has been modified to use rpi-cam to get frames from the Pi Camera.  The 
+instructions below are mainly left for posterity. The ELEC 392 project repo install scripts
+automatically handle the installation of AIY Maker Kit for you. 
 
 # AIY Maker Kit Python API and examples
 
