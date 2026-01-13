@@ -174,7 +174,13 @@ def main():
                     print(f"Frame {frame_id}: {len(detections)} objects | Detection: {detect_time*1000:.1f}ms")
                     if detections:
                         for det in detections:
-                            print(f"  - {det['label']}: {det['score']}")
+                            bbox = det['bbox']
+                            # Convert normalized bbox back to pixel coordinates for display
+                            xmin = int(bbox[0] * width)
+                            ymin = int(bbox[1] * height)
+                            xmax = int(bbox[2] * width)
+                            ymax = int(bbox[3] * height)
+                            print(f"  - {det['label']}: {det['score']} | bbox: ({xmin}, {ymin}, {xmax}, {ymax})")
                     last_print_time = current_time
                 
                 frame_id += 1
