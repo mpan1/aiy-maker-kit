@@ -151,11 +151,23 @@ def main():
     
     frame_id = 0
     last_print_time = time.time()
+    last_debug_time = time.time()
+    frame_count = 0
     
     try:
         # Run without display (headless mode for UDP transmission)
         # Disable mirror to avoid any OpenCV operations that might interact with display
         for frame in vision.get_frames(display=False, mirror=False):
+            frame_count += 1
+            
+            # Debug: print frame rate every 2 seconds
+            current_time = time.time()
+            if current_time - last_debug_time >= 2.0:
+                fps = frame_count / (current_time - last_debug_time)
+                print(f"[DEBUG] Processing at {fps:.1f} FPS, frame_id={frame_id}")
+                frame_count = 0
+                last_debug_time = current_time
+            
             try:
                 start_time = time.time()
                 
