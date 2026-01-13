@@ -35,12 +35,13 @@ To use your custom model:
     4. Provide your labels file with the --labels argument
 
 Usage:
-    python projects/object_detector_visual.py [--confidence THRESHOLD] [--model MODEL_PATH] [--labels LABELS_FILE]
+    python projects/object_detector.py [--confidence THRESHOLD] [--model MODEL_PATH] [--labels LABELS_FILE] [--headless]
 
 Args:
     --confidence: Minimum confidence score for detections (0.0-1.0, default: 0.5)
     --model: Path to custom model file (default: built-in SSD MobileNet v2)
     --labels: Path to labels file for custom model (txt file, one label per line)
+    --headless: Run without display (useful for SSH/headless Pi)
 
 The default TensorFlow model is downloaded if you flashed the AIY Maker Kit
 system image for Raspberry Pi. Otherwise, run download_models.sh in this directory.
@@ -48,7 +49,6 @@ system image for Raspberry Pi. Otherwise, run download_models.sh in this directo
 
 import os.path
 import argparse
-import cv2
 from aiymakerkit import vision
 from aiymakerkit import utils
 
@@ -57,53 +57,6 @@ def path(name):
     """Creates an absolute path to a file in the same directory as this script."""
     root = os.path.dirname(os.path.realpath(__file__))
     return os.path.join(root, name)
-
-
-def draw_detections(frame, objects, labels):
-    """
-    Draw bounding boxes and labels on the frame using aiymakerkit utilities.
-    
-    Args:
-        frame: Image frame to draw on
-        objects: List of detected objects from the model
-        labels: Dictionary mapping class IDs to label names
-    """
-    for obj in objects:
-        # Draw bounding box in green
-        vision.draw_rect(frame, obj.bbox, color=(0, 255, 0), thickness=2)
-        
-        # Draw label and confidence score
-        label = labels.get(obj.id, "unknown")
-        confidence = obj.score
-        label_text = f"{label}: {confidence:.2f}"
-        
-        # Get text size for background
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
-        font_thickness = 1
-        text_size = cv2.getTextSize(label_text, font, font_scale, font_thickness)[0]
-        
-        # Draw background rectangle for text
-        text_x = int(obj.bbox.xmin)
-        text_y = int(obj.bbox.ymin) - 5
-        cv2.rectangle(
-            frame,
-            (text_x, text_y - text_size[1] - 4),
-            (text_x + text_size[0], text_y),
-            (0, 255, 0),
-            -1
-        )
-        
-        # Draw text
-        cv2.putText(
-            frame,
-            label_text,
-            (text_x, text_y - 2),
-            font,
-            font_scale,
-            (0, 0, 0),  # Black text
-            font_thickness
-        )
 
 
 def main():
@@ -127,6 +80,11 @@ def main():
         type=str,
         default=None,
         help="Path to labels file for custom model (txt file, one label per line)."
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run without display (useful for SSH/headless Pi). Only prints detections."
     )
     args = parser.parse_args()
     
@@ -160,30 +118,85 @@ def main():
     
     print(f"Starting object detection with Coral TPU")
     print(f"Confidence threshold: {args.confidence}")
+    if args.headless:
+        print("Mode: HEADLESS (no display)")
+    else:
+        print("Mode: VISUAL (display enabled)")
     print(f"Press Ctrl+C to stop\n")
     
     frame_id = 0
     
-    try:
-        # Run a loop to get images and process them in real-time
-        for frame in vision.get_frames():
-            # Detect objects with specified confidence threshold
-            objects = detector.get_objects(frame, threshold=args.confidence)
+    # In headless mode, use simple camera loop without display
+    if args.headless:
+        import tflite_runtime.interpreter as tflite
+        from pycoral.utils import edgetpu
+        import numpy as np
+        
+        try:
+            # Get frames directly without display
+            from pycoral.utils.dataset import read_label_file
+            import cv2
             
-            # Draw detections on the frame
-            draw_detections(frame, objects, labels)
+            # Try to get camera feed without OpenCV display
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                print("Error: Could not open camera")
+                return
             
-            # Print summary every 30 frames
-            if frame_id % 30 == 0:
-                print(f"Frame {frame_id}: {len(objects)} objects detected")
-                for obj in objects:
-                    label = labels.get(obj.id, "unknown")
-                    print(f"  - {label}: {obj.score:.2f}")
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    print("Error: Failed to read frame")
+                    break
+                
+                try:
+                    objects = detector.get_objects(frame, threshold=args.confidence)
+                    
+                    if frame_id % 10 == 0:
+                        print(f"Frame {frame_id}: {len(objects)} objects detected")
+                        for obj in objects:
+                            label = labels.get(obj.id, "unknown")
+                            print(f"  - {label}: {obj.score:.2f}")
+                    
+                    frame_id += 1
+                except Exception as e:
+                    print(f"Error processing frame: {e}")
+                    continue
+        except KeyboardInterrupt:
+            print("\n\nDetection stopped.")
+        finally:
+            cap.release()
+    else:
+        # Visual mode with display
+        try:
+            # Run a loop to get images and process them in real-time
+            for frame in vision.get_frames():
+                try:
+                    # Detect objects with specified confidence threshold
+                    objects = detector.get_objects(frame, threshold=args.confidence)
+                    
+                    # Draw detections using built-in aiymakerkit function
+                    vision.draw_objects(frame, objects, labels=labels, color=(0, 255, 0), thickness=2)
+                    
+                    # Print summary every 30 frames
+                    if frame_id % 30 == 0:
+                        print(f"Frame {frame_id}: {len(objects)} objects detected")
+                        for obj in objects:
+                            label = labels.get(obj.id, "unknown")
+                            print(f"  - {label}: {obj.score:.2f}")
+                    
+                    frame_id += 1
+                except Exception as e:
+                    # Skip frames with errors and continue
+                    print(f"Error processing frame: {e}")
+                    continue
             
-            frame_id += 1
-            
-    except KeyboardInterrupt:
-        print("\n\nVisualization stopped.")
+        except KeyboardInterrupt:
+            print("\n\nVisualization stopped.")
+        except Exception as e:
+            print(f"\nFatal error: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 if __name__ == "__main__":
