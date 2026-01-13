@@ -421,17 +421,23 @@ def get_frames(title='Camera', size=(640, 480), handle_key=None,
                 if mirror:
                     frame = cv2.flip(frame, 1)
 
-                key = cv2.waitKey(1) if display else -1
                 if display:
                     cv2.imshow(title, frame)
-
-                if return_key:
-                    yield (frame, key)
+                    key = cv2.waitKey(1)
+                    
+                    if return_key:
+                        yield (frame, key)
+                    else:
+                        yield frame
+                    
+                    if key != -1 and not handle_key(key, frame):
+                        break
                 else:
-                    yield frame
-
-                if key != -1 and not handle_key(key, frame):
-                    break
+                    # Headless mode - no OpenCV display functions at all
+                    if return_key:
+                        yield (frame, -1)
+                    else:
+                        yield frame
     finally:
         try:
             proc.terminate()
