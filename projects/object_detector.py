@@ -22,6 +22,11 @@ is sent over the network - this is purely for visual inspection and debugging.
 Useful for testing object detection models, tuning confidence thresholds, and
 verifying model performance before deploying in autonomous systems.
 
+**IMPORTANT - DISPLAY COMPATIBILITY:**
+- Visual mode (with display window) requires a physical monitor connected to the Pi
+- Raspberry Pi Connect and SSH users should use --headless mode
+- For autonomous control, use object_detector_udp.py instead (no display needed)
+
 CUSTOM MODELS:
 By default, this uses the pre-built SSD MobileNet v2 COCO model. However, you
 can train and deploy your own object detection models for your specific use case
@@ -41,8 +46,8 @@ Args:
     --confidence: Minimum confidence score for detections (0.0-1.0, default: 0.5)
     --model: Path to custom model file (default: built-in SSD MobileNet v2)
     --labels: Path to labels file for custom model (txt file, one label per line)
-    --headless: Run without display (useful for SSH/headless Pi). Only prints detections.
-    --no-draw: Don't draw bounding boxes on video (useful for Raspberry Pi Connect)
+    --headless: Run without display window (RECOMMENDED for Raspberry Pi Connect/SSH)
+    --no-draw: Don't draw bounding boxes on video (not recommended, use --headless instead)
 
 The default TensorFlow model is downloaded if you flashed the AIY Maker Kit
 system image for Raspberry Pi. Otherwise, run download_models.sh in this directory.
@@ -160,7 +165,8 @@ def main():
                     if objects:
                         for obj in objects:
                             label = labels.get(obj.id, "unknown")
-                            print(f"  - {label}: {obj.score:.2f}")
+                            bbox = obj.bbox
+                            print(f"  - {label}: {obj.score:.2f} | bbox: ({bbox.xmin}, {bbox.ymin}, {bbox.xmax}, {bbox.ymax})")
                     last_print_time = current_time
                 
                 frame_id += 1
