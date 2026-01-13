@@ -132,78 +132,39 @@ def main():
     
     frame_id = 0
     
-    # In headless mode, use simple camera loop without display
-    if args.headless:
-        import tflite_runtime.interpreter as tflite
-        from pycoral.utils import edgetpu
-        import numpy as np
-        
-        try:
-            # Get frames directly without display
-            from pycoral.utils.dataset import read_label_file
-            import cv2
-            
-            # Try to get camera feed without OpenCV display
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                print("Error: Could not open camera")
-                return
-            
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    print("Error: Failed to read frame")
-                    break
+    # Choose display mode based on flags
+    display_mode = not args.headless
+    
+    try:
+        # Get frames with or without display
+        for frame in vision.get_frames(display=display_mode):
+            try:
+                # Detect objects with specified confidence threshold
+                objects = detector.get_objects(frame, threshold=args.confidence)
                 
-                try:
-                    objects = detector.get_objects(frame, threshold=args.confidence)
-                    
-                    if frame_id % 10 == 0:
-                        print(f"Frame {frame_id}: {len(objects)} objects detected")
-                        for obj in objects:
-                            label = labels.get(obj.id, "unknown")
-                            print(f"  - {label}: {obj.score:.2f}")
-                    
-                    frame_id += 1
-                except Exception as e:
-                    print(f"Error processing frame: {e}")
-                    continue
-        except KeyboardInterrupt:
-            print("\n\nDetection stopped.")
-        finally:
-            cap.release()
-    else:
-        # Visual mode with display
-        try:
-            # Run a loop to get images and process them in real-time
-            for frame in vision.get_frames():
-                try:
-                    # Detect objects with specified confidence threshold
-                    objects = detector.get_objects(frame, threshold=args.confidence)
-                    
-                    # Draw detections only if --no-draw is not set
-                    if not args.no_draw:
-                        vision.draw_objects(frame, objects, labels=labels, color=(0, 255, 0), thickness=2)
-                    
-                    # Print summary every 10 frames
-                    if frame_id % 10 == 0:
-                        print(f"Frame {frame_id}: {len(objects)} objects detected")
-                        for obj in objects:
-                            label = labels.get(obj.id, "unknown")
-                            print(f"  - {label}: {obj.score:.2f}")
-                    
-                    frame_id += 1
-                except Exception as e:
-                    # Skip frames with errors and continue
-                    print(f"Error processing frame: {e}")
-                    continue
-            
-        except KeyboardInterrupt:
-            print("\n\nVisualization stopped.")
-        except Exception as e:
-            print(f"\nFatal error: {e}")
-            import traceback
-            traceback.print_exc()
+                # Draw detections only if display is on and --no-draw is not set
+                if display_mode and not args.no_draw:
+                    vision.draw_objects(frame, objects, labels=labels, color=(0, 255, 0), thickness=2)
+                
+                # Print summary every 10 frames
+                if frame_id % 10 == 0:
+                    print(f"Frame {frame_id}: {len(objects)} objects detected")
+                    for obj in objects:
+                        label = labels.get(obj.id, "unknown")
+                        print(f"  - {label}: {obj.score:.2f}")
+                
+                frame_id += 1
+            except Exception as e:
+                # Skip frames with errors and continue
+                print(f"Error processing frame: {e}")
+                continue
+        
+    except KeyboardInterrupt:
+        print("\n\nDetection stopped.")
+    except Exception as e:
+        print(f"\nFatal error: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":
