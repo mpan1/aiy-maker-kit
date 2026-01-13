@@ -9,10 +9,8 @@ class UdpDetectionSender:
     def __init__(self, addr=DEFAULT_ADDR):
         self.addr = addr
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # Force immediate delivery - disable Nagle's algorithm equivalent for UDP
-        self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, 1)
-        # Bind to specific source to ensure routing
-        self.sock.bind(('127.0.0.1', 0))
+        # UDP sender should NOT bind - let OS choose ephemeral port
+        # Just ensure socket is ready to send
         self.dropped_count = 0
 
     def send(self, objects, frame_id):
@@ -23,7 +21,7 @@ class UdpDetectionSender:
         }
         try:
             self.sock.sendto(json.dumps(msg).encode("utf-8"), self.addr)
-            sys.stdout.flush()  # Force flush to ensure no buffering blocks socket
+            sys.stdout.flush()
         except Exception as e:
             self.dropped_count += 1
             if self.dropped_count % 100 == 1:
